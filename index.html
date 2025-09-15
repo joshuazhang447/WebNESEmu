@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web NES Emu</title>
+    <script src="https://unpkg.com/jsnes/dist/jsnes.min.js"></script>
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      /* All CSS */
+      :root {
+        --bg-1: #0e0f13;
+        --bg-2: #06070a;
+        --shell-1: #cfd1d6;
+        --shell-2: #babcc3;
+        --shell-line: #8f9198;
+        --bezel: #0c0c10;
+        --bezel-edge: #1f2128;
+        --screen-edge: #050506;
+        --accent: #d33636;
+        --accent-hi: #ff5252;
+        --ink: #1a1d22;
+        --shadow: rgba(0, 0, 0, 0.35);
+        --white: #fff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: "Press Start 2P", system-ui, -apple-system, Segoe UI,
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #111;
+        background: radial-gradient(
+            1200px 800px at 20% -10%,
+            #1b1e25 0%,
+            #0f1116 60%,
+            #090a0d 100%
+          ),
+          repeating-linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.018) 0 1px,
+            transparent 1px 3px
+          ),
+          linear-gradient(180deg, var(--bg-1), var(--bg-2));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      /* Main console container */
+      .console {
+        width: min(1300px, 96vw);
+        height: min(980px, 96vh);
+        background: linear-gradient(180deg, var(--shell-1), var(--shell-2));
+        border: 2px solid var(--shell-line);
+        border-radius: 22px;
+        box-shadow: 0 18px 50px var(--shadow),
+          inset 0 4px 0 rgba(255, 255, 255, 0.5),
+          inset 0 -4px 0 rgba(0, 0, 0, 0.1);
+        display: grid;
+        grid-template-columns: 100px 1fr 150px;
+        grid-template-rows: 1fr auto;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* A little texture */
+      .console::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(255, 255, 255, 0.05) 0 2px,
+          rgba(255, 255, 255, 0) 2px 4px
+        );
+        mix-blend-mode: overlay;
+        pointer-events: none;
+      }
+
+      /* The left vertical brand bar */
+      .left-rail {
+        grid-row: 1;
+        grid-column: 1;
+        position: relative;
+        background: linear-gradient(180deg, #c6c8ce, #b5b7bf);
+        border-right: 2px solid var(--shell-line);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .brand {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px;
+      }
+      .brand .stack {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        text-align: center;
+        letter-spacing: 1px;
+        line-height: 1.4;
+        color: #b70d20;
+        -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.3);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+        user-select: none;
+      }
+      .brand .sub {
+        color: #333;
+        opacity: 0.85;
+        font-size: 0.58rem;
+        letter-spacing: 2px;
+      }
+
+      /* The stripes */
+      .right-rail {
+        grid-row: 1;
+        grid-column: 3;
+        background: linear-gradient(180deg, #bcbec6, #b1b3ba);
+        border-left: 2px solid var(--shell-line);
+        position: relative;
+        overflow: hidden;
+      }
+      .right-rail::before {
+        content: "";
+        position: absolute;
+        inset: 14% 12% 14% 12%;
+        border-radius: 8px;
+        background: repeating-linear-gradient(
+          0deg,
+          #23252b 0 8px,
+          #2b2d34 8px 16px
+        );
+        box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45),
+          inset 0 -3px 6px rgba(255, 255, 255, 0.2);
+      }
+
+      /* The Screen */
+      .middle {
+        grid-row: 1;
+        grid-column: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      /* Screen bezel */
+      .screen-bezel {
+        position: relative;
+        margin: min(2.2vw, 26px);
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        aspect-ratio: 256 / 240;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #0f1015, #06070a);
+        border: 12px solid var(--bezel-edge);
+        box-shadow: inset 0 0 0 4px #000, 0 10px 28px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+      }
+
+      .screen-inner {
+        position: absolute;
+        inset: 1.8%;
+        border-radius: 10px;
+        background: radial-gradient(
+          150% 90% at 50% 10%,
+          #222 0%,
+          #0b0b0f 50%,
+          #000 100%
+        );
+        box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.8),
+          inset 0 0 120px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+      }
+
+      /*  WebGL canvas */
+      #nes-screen {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        background: #000;
+        border-radius: 8px;
+      }
+
+      /* Gloss reflection */
+      .glass {
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.08),
+            rgba(255, 255, 255, 0) 22%
+          ),
+          linear-gradient(
+            110deg,
+            rgba(255, 255, 255, 0.07) 0%,
+            rgba(255, 255, 255, 0) 40% 100%
+          );
+        mix-blend-mode: screen;
+      }
+
+      /* Bottom controls rails */
+      .bottom-rail {
+        grid-row: 2;
+        grid-column: 1 / -1;
+        padding: min(1.2vw, 15px) min(2.2vw, 26px);
+        border-top: 2px solid var(--shell-line);
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: clamp(16px, 3vw, 40px);
+      }
+
+      /* Control container */
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: clamp(8px, 1.5vw, 16px);
+        flex-wrap: wrap;
+      }
+
+      /* Nintendo Entertainment System */
+      .power {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #333;
+        font-size: 0.65rem;
+        letter-spacing: 1px;
+        margin-right: clamp(8px, 1.5vw, 16px);
+      }
+      .led {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #3b0000;
+        border: 2px solid #111;
+        box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.7);
+        transition: all 0.2s ease;
+      }
+      .led.on {
+        background: #ff2b2b;
+        box-shadow: 0 0 10px rgba(255, 40, 40, 0.9),
+          0 0 24px rgba(255, 40, 40, 0.6),
+          inset 0 0 3px rgba(255, 255, 255, 0.6);
+      }
+
+      /* Buttons */
+      .btn {
+        position: relative;
+        appearance: none;
+        border: none;
+        cursor: pointer;
+        padding: 12px 18px;
+        border-radius: 10px;
+        border: 3px solid #222;
+        box-shadow: 4px 4px 0 #222;
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(0.55rem, 1.1vw, 0.85rem);
+        color: #fff;
+        text-shadow: 1px 1px #000;
+        background: #666;
+        transition: transform 0.06s ease, box-shadow 0.06s ease,
+          filter 0.2s ease;
+        user-select: none;
+      }
+      .btn:active {
+        transform: translate(4px, 4px);
+        box-shadow: none;
+      }
+
+      .btn.red {
+        background: linear-gradient(180deg, var(--accent), #a31313);
+      }
+      .btn.red:hover {
+        filter: brightness(1.05);
+      }
+
+      .btn.gray {
+        background: linear-gradient(180deg, #6d7076, #4a4d55);
+      }
+      .btn.gray:hover {
+        filter: brightness(1.06);
+      }
+
+      /* Hidden input */
+      #rom-file-input {
+        display: none;
+      }
+
+      /* Drag-and-drop */
+      .drop-hint {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 20px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(2px);
+        font-size: clamp(0.8rem, 1.6vw, 1rem);
+        z-index: 50;
+      }
+      .drop-hint.show {
+        display: flex;
+      }
+
+      /* Credits */
+      .legend {
+        color: #2b2d34;
+        opacity: 0.9;
+        font-size: clamp(0.5rem, 0.9vw, 0.7rem);
+        line-height: 1.6;
+        user-select: none;
+        text-align: right;
+      }
+      #controller-status {
+        display: block;
+        font-size: 0.8em;
+        color: var(--accent);
+      }
+
+      /* Modal Styles */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .modal-content {
+        background: var(--shell-1);
+        color: var(--ink);
+        padding: 24px 30px;
+        border-radius: 12px;
+        border: 2px solid var(--shell-line);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        width: min(500px, 90vw);
+        font-size: 0.8rem;
+      }
+      .modal-content h2 {
+        text-align: center;
+        margin-top: 0;
+        font-size: 1.1rem;
+      }
+      #key-bindings-list .key-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 4px;
+        border-bottom: 1px solid var(--shell-line);
+      }
+      #key-bindings-list .key-row:first-of-type {
+        border-top: 1px solid var(--shell-line);
+      }
+      #key-bindings-list .action-name {
+        color: #333;
+      }
+      #key-bindings-list .key-button {
+        font-size: 0.7rem;
+        padding: 8px 12px;
+        min-width: 150px;
+        text-align: center;
+      }
+      .modal-controls {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 24px;
+      }
+
+      /* Volume slider */
+      .volume-control {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #333;
+        font-size: 0.6rem;
+      }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100px;
+        height: 8px;
+        background: #333;
+        border-radius: 5px;
+        outline: none;
+        cursor: pointer;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        background: #6d7076;
+        border-radius: 50%;
+        border: 2px solid #222;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        background: #6d7076;
+        border-radius: 50%;
+        border: 2px solid #222;
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 900px) {
+        .console {
+          grid-template-columns: 60px 1fr 90px;
+        }
+        .bottom-rail {
+          grid-template-columns: 1fr;
+          justify-items: center;
+          text-align: center;
+          gap: 12px;
+        }
+        .legend {
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="console" id="console">
+      <div class="left-rail">
+        <div class="brand">
+          <div class="stack">
+            NINTENDO<br />
+            <span class="sub">ENTERTAINMENT SYSTEM</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="middle">
+        <!-- Screen -->
+        <div class="screen-bezel">
+          <div class="screen-inner">
+            <canvas id="nes-screen" width="512" height="480"></canvas>
+            <div class="glass"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-rail"></div>
+
+      <!-- Bottom Controls -->
+      <div class="bottom-rail">
+        <div class="controls">
+          <span class="power"
+            ><span id="power-led" class="led"></span>POWER</span
+          >
+          <label class="btn red" id="load-button" for="rom-file-input"
+            >LOAD ROM</label
+          >
+          <input type="file" id="rom-file-input" accept=".nes" />
+          <button class="btn gray" id="rebind-button" title="Rebind Keys">
+            REBIND
+          </button>
+          <button class="btn gray" id="pause-button" title="Pause/Resume">
+            PAUSE
+          </button>
+          <div class="volume-control">
+            VOL
+            <input
+              type="range"
+              id="volume-slider"
+              min="0"
+              max="1"
+              step="0.05"
+              value="0.5"
+            />
+          </div>
+        </div>
+
+        <div class="legend">
+          Emulator by Joshua Z. Powered by JSNES.
+          <span id="controller-status"></span>
+        </div>
+      </div>
+
+      <!-- Drag hint Overlay -->
+      <div id="drop-hint" class="drop-hint">Drop your .nes ROM to load</div>
+    </div>
+
+    <!-- Rebinding keys Modal -->
+    <div id="rebind-modal" class="modal-overlay" style="display: none">
+      <div class="modal-content">
+        <h2>Rebind Keys</h2>
+        <div id="key-bindings-list"></div>
+        <div class="modal-controls">
+          <button id="close-modal-button" class="btn gray">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden raw frame source -->
+    <canvas
+      id="nes-texture-source"
+      width="256"
+      height="240"
+      style="display: none"
+    ></canvas>
+
+    <!-- Shaders -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+      attribute vec2 a_position;
+      attribute vec2 a_texCoord;
+      varying vec2 v_texCoord;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+        v_texCoord = a_texCoord;
+      }
+    </script>
+    <script id="fragment-shader" type="x-shader/x-fragment">
+      precision mediump float;
+      uniform sampler2D u_texture;
+      varying vec2 v_texCoord;
+      const float barrelPower = 0.15;
+      const float scanlineOpacity = 0.15;
+      const float vignetteOpacity = 0.35;
+      vec2 barrel(vec2 uv, float power){
+        vec2 c = vec2(0.5);
+        vec2 d = uv - c;
+        float r = length(d);
+        float k = pow(r, 2.0) * power;
+        return uv + d * k;
+      }
+      void main(){
+        vec2 uv = barrel(v_texCoord, barrelPower);
+        if(uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0){
+          gl_FragColor = vec4(0.0,0.0,0.0,1.0);
+          return;
+        }
+        vec4 color = texture2D(u_texture, uv);
+        float scan = mod(gl_FragCoord.y, 2.0) * scanlineOpacity;
+        color.rgb -= scan;
+        float v = length(v_texCoord - vec2(0.5));
+        color.rgb -= v * vignetteOpacity;
+        gl_FragColor = color;
+      }
+    </script>
+
+    <script>
+      (function () {
+        const SCREEN_WIDTH = 256;
+        const SCREEN_HEIGHT = 240;
+
+        const sourceCanvas = document.getElementById("nes-texture-source");
+        const sourceCtx = sourceCanvas.getContext("2d", {
+          willReadFrequently: false,
+        });
+
+        const glCanvas = document.getElementById("nes-screen");
+        const gl = glCanvas.getContext("webgl", {
+          antialias: false,
+          preserveDrawingBuffer: false,
+        });
+
+        const romFileInput = document.getElementById("rom-file-input");
+        const powerLed = document.getElementById("power-led");
+        const pauseBtn = document.getElementById("pause-button");
+        const dropHint = document.getElementById("drop-hint");
+        const volumeSlider = document.getElementById("volume-slider");
+        const controllerStatus = document.getElementById("controller-status");
+
+        if (!gl) {
+          alert("WebGL not available.");
+          return;
+        }
+
+        // Build the shaders / program
+        function createShader(type, src) {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+            console.error(gl.getShaderInfoLog(s));
+            gl.deleteShader(s);
+            return null;
+          }
+          return s;
+        }
+        function createProgram(vsSource, fsSource) {
+          const vs = createShader(gl.VERTEX_SHADER, vsSource);
+          const fs = createShader(gl.FRAGMENT_SHADER, fsSource);
+          const p = gl.createProgram();
+          gl.attachShader(p, vs);
+          gl.attachShader(p, fs);
+          gl.linkProgram(p);
+          if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+            console.error(gl.getProgramInfoLog(p));
+            return null;
+          }
+          return p;
+        }
+
+        const program = createProgram(
+          document.getElementById("vertex-shader").text,
+          document.getElementById("fragment-shader").text
+        );
+        gl.useProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+          gl.STATIC_DRAW
+        );
+        const aPosition = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(aPosition);
+        gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+        const texBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0]),
+          gl.STATIC_DRAW
+        );
+        const aTex = gl.getAttribLocation(program, "a_texCoord");
+        gl.enableVertexAttribArray(aTex);
+        gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 0, 0);
+
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        // NES wiring
+        let nes = null;
+        let frameTimer = null;
+        let paused = false;
+
+        const imageData = sourceCtx.createImageData(
+          SCREEN_WIDTH,
+          SCREEN_HEIGHT
+        );
+        const u32 = new Uint32Array(imageData.data.buffer);
+
+        const onFrame = (frameBuffer) => {
+          for (let i = 0; i < u32.length; i++) {
+            u32[i] = 0xff000000 | frameBuffer[i];
+          }
+          sourceCtx.putImageData(imageData, 0, 0);
+        };
+
+        // AudioWorklet
+        const NES_SAMPLE_RATE = 44100;
+
+        let audioCtx = null;
+        let gainNode = null;
+        let audioWorkletNode = null;
+
+        // The worklet mode
+        const WORKLET_CODE = `
+        class ResamplingFIFO {
+          constructor(inputRate, outputRate, seconds = 0.15) {
+            this.inRate = inputRate;
+            this.outRate = outputRate;
+            this.step = inputRate / outputRate;
+            const cap = Math.ceil(inputRate * seconds);
+            this.cap = cap;
+            this.left = new Float32Array(cap);
+            this.right = new Float32Array(cap);
+            this.r = 0;
+            this.w = 0;
+            this.len = 0;
+            this.frac = 0;
+          }
+          push(l, r) {
+            if (this.len >= this.cap) {
+              this.r = (this.r + 1) % this.cap;
+              this.len--;
+            }
+            this.left[this.w] = l;
+            this.right[this.w] = r;
+            this.w = (this.w + 1) % this.cap;
+            this.len++;
+          }
+          popBlock(outL, outR) {
+            const n = outL.length;
+            for (let i = 0; i < n; i++) {
+              if (this.len < 2) {
+                outL[i] = 0;
+                if (outR) outR[i] = 0;
+                continue;
+              }
+              let idx = Math.floor(this.frac);
+              let frac = this.frac - idx;
+              let i0 = (this.r + idx) % this.cap;
+              let i1 = (i0 + 1) % this.cap;
+              const l0 = this.left[i0], l1 = this.left[i1];
+              const r0 = this.right[i0], r1 = this.right[i1];
+              outL[i] = l0 + frac * (l1 - l0);
+              if (outR) outR[i] = r0 + frac * (r1 - r0);
+              this.frac += this.step;
+              const advance = this.frac | 0;
+              if (advance > 0) {
+                this.r = (this.r + advance) % this.cap;
+                this.len -= advance;
+                this.frac -= advance;
+              }
+            }
+          }
+          clear() {
+            this.r = this.w = this.len = 0;
+            this.frac = 0;
+          }
+        }
+
+        class NesAudioProcessor extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.queue = null;
+            this.port.onmessage = (e) => {
+              if (e.data.type === 'init') {
+                const { inputRate, outputRate } = e.data;
+                this.queue = new ResamplingFIFO(inputRate, outputRate);
+              } else if (e.data.type === 'samples') {
+                this.queue?.push(e.data.left, e.data.right);
+              } else if (e.data.type === 'clear') {
+                this.queue?.clear();
+              }
+            };
+          }
+          process(inputs, outputs, parameters) {
+            const output = outputs[0];
+            if (!output || !output[0]) {
+              return true;
+            }
+            const outL = output[0];
+            const outR = output.length > 1 ? output[1] : null;
+            if (this.queue) {
+              this.queue.popBlock(outL, outR);
+            } else {
+              for (let i = 0; i < outL.length; i++) {
+                outL[i] = 0;
+                if(outR) outR[i] = 0;
+              }
+            }
+            return true;
+          }
+        }
+        registerProcessor('nes-audio-processor', NesAudioProcessor);
+        `;
+
+        async function initAudio() {
+          if (audioCtx) {
+            if (audioCtx.state === "suspended") await audioCtx.resume();
+            return;
+          }
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) {
+            console.warn("Web Audio API is not supported in this browser.");
+            return;
+          }
+
+          audioCtx = new AC({ sampleRate: 48000 });
+
+          gainNode = audioCtx.createGain();
+          gainNode.gain.value = parseFloat(volumeSlider.value);
+          gainNode.connect(audioCtx.destination);
+
+          const workletBlob = new Blob([WORKLET_CODE], {
+            type: "application/javascript",
+          });
+          const workletUrl = URL.createObjectURL(workletBlob);
+
+          try {
+            await audioCtx.audioWorklet.addModule(workletUrl);
+          } catch (e) {
+            console.error("Error loading audio worklet module", e);
+            throw e;
+          }
+
+          audioWorkletNode = new AudioWorkletNode(
+            audioCtx,
+            "nes-audio-processor"
+          );
+          audioWorkletNode.port.postMessage({
+            type: "init",
+            inputRate: NES_SAMPLE_RATE,
+            outputRate: audioCtx.sampleRate,
+          });
+          audioWorkletNode.connect(gainNode);
+        }
+
+        volumeSlider.addEventListener("input", (e) => {
+          if (gainNode && audioCtx) {
+            gainNode.gain.setTargetAtTime(
+              parseFloat(e.target.value),
+              audioCtx.currentTime,
+              0.01
+            );
+          }
+        });
+
+        function startEmulator(romData) {
+          if (frameTimer) {
+            cancelAnimationFrame(frameTimer);
+            frameTimer = null;
+          }
+
+          if (audioWorkletNode) {
+            audioWorkletNode.port.postMessage({ type: "clear" });
+          }
+
+          nes = new jsnes.NES({
+            onFrame: onFrame,
+            onAudioSample: (left, right) => {
+              if (audioWorkletNode) {
+                audioWorkletNode.port.postMessage({
+                  type: "samples",
+                  left,
+                  right,
+                });
+              }
+            },
+          });
+
+          try {
+            nes.loadROM(romData);
+            powerLed.classList.add("on");
+            paused = false;
+            pauseBtn.textContent = "PAUSE";
+            tick();
+          } catch (e) {
+            alert(`Error loading ROM: ${e.message}`);
+            powerLed.classList.remove("on");
+          }
+        }
+
+        function tick() {
+          if (nes && !paused) {
+            handleGamepadInput();
+            nes.frame();
+            render();
+          }
+          frameTimer = requestAnimationFrame(tick);
+        }
+
+        function resizeGL() {
+          const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+          const w = Math.floor(glCanvas.clientWidth * dpr);
+          const h = Math.floor(glCanvas.clientHeight * dpr);
+          if (glCanvas.width !== w || glCanvas.height !== h) {
+            glCanvas.width = w;
+            glCanvas.height = h;
+            gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+          }
+        }
+        function render() {
+          resizeGL();
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            sourceCanvas
+          );
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+
+        async function loadFile(file) {
+          if (!file) return;
+          try {
+            await initAudio();
+            const reader = new FileReader();
+            reader.onload = (ev) => startEmulator(ev.target.result);
+            reader.onerror = () => alert("Failed to read ROM file.");
+            reader.readAsBinaryString(file);
+          } catch (e) {
+            console.error("Failed to initialize audio:", e);
+            alert(
+              "Could not initialize the audio system. Please interact with the page and try again."
+            );
+          }
+        }
+
+        romFileInput.addEventListener("change", (e) => {
+          loadFile(e.target.files[0]);
+        });
+
+        pauseBtn.addEventListener("click", () => {
+          if (!nes) return;
+          paused = !paused;
+          if (paused && audioWorkletNode) {
+            audioWorkletNode.port.postMessage({ type: "clear" });
+          }
+          pauseBtn.textContent = paused ? "RESUME" : "PAUSE";
+        });
+
+        // ----- Xinput -----
+        let previousGamepadState = {};
+        const GAMEPAD_BUTTON_MAP = {
+          // D-pad
+          12: jsnes.Controller.BUTTON_UP,
+          13: jsnes.Controller.BUTTON_DOWN,
+          14: jsnes.Controller.BUTTON_LEFT,
+          15: jsnes.Controller.BUTTON_RIGHT,
+          // Face Button
+          0: jsnes.Controller.BUTTON_A,
+          3: jsnes.Controller.BUTTON_A,
+          1: jsnes.Controller.BUTTON_B,
+          2: jsnes.Controller.BUTTON_B,
+          // Select and Start
+          8: jsnes.Controller.BUTTON_SELECT,
+          9: jsnes.Controller.BUTTON_START,
+        };
+
+        function handleGamepadInput() {
+          if (!nes) return;
+          const gp = navigator.getGamepads()[0];
+          if (!gp) return;
+
+          Object.entries(GAMEPAD_BUTTON_MAP).forEach(([btnIndex, nesBtn]) => {
+            const isPressed = gp.buttons[btnIndex]?.pressed;
+            const wasPressed = previousGamepadState[btnIndex];
+
+            if (isPressed && !wasPressed) {
+              nes.buttonDown(1, nesBtn);
+            } else if (!isPressed && wasPressed) {
+              nes.buttonUp(1, nesBtn);
+            }
+            previousGamepadState[btnIndex] = isPressed;
+          });
+        }
+
+        window.addEventListener("gamepadconnected", (event) => {
+          controllerStatus.textContent = "Controller Connected";
+        });
+        window.addEventListener("gamepaddisconnected", (event) => {
+          controllerStatus.textContent = "";
+        });
+
+        //Keyboard Supports
+        let KEY_MAP = {
+          ArrowUp: { player: 1, button: jsnes.Controller.BUTTON_UP },
+          ArrowDown: { player: 1, button: jsnes.Controller.BUTTON_DOWN },
+          ArrowLeft: { player: 1, button: jsnes.Controller.BUTTON_LEFT },
+          ArrowRight: { player: 1, button: jsnes.Controller.BUTTON_RIGHT },
+          KeyX: { player: 1, button: jsnes.Controller.BUTTON_A },
+          KeyZ: { player: 1, button: jsnes.Controller.BUTTON_B },
+          ShiftRight: { player: 1, button: jsnes.Controller.BUTTON_SELECT },
+          Enter: { player: 1, button: jsnes.Controller.BUTTON_START },
+        };
+        function onKeyDown(e) {
+          const m = KEY_MAP[e.code];
+          if (m && nes) {
+            nes.buttonDown(m.player, m.button);
+            e.preventDefault();
+          }
+        }
+        function onKeyUp(e) {
+          const m = KEY_MAP[e.code];
+          if (m && nes) {
+            nes.buttonUp(m.player, m.button);
+            e.preventDefault();
+          }
+        }
+        document.addEventListener("keyup", onKeyUp);
+
+        // Drag and drop rom
+
+        // Flickering issue addressed
+        let dragLeaveTimer = null;
+        function showDropHint(show) {
+          dropHint.classList.toggle("show", !!show);
+        }
+        window.addEventListener("dragenter", (e) => {
+          e.preventDefault();
+          clearTimeout(dragLeaveTimer);
+          showDropHint(true);
+        });
+        window.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          clearTimeout(dragLeaveTimer);
+          showDropHint(true);
+        });
+        window.addEventListener("dragleave", (e) => {
+          e.preventDefault();
+          dragLeaveTimer = setTimeout(() => {
+            showDropHint(false);
+          }, 100);
+        });
+        window.addEventListener("drop", (e) => {
+          e.preventDefault();
+          clearTimeout(dragLeaveTimer);
+          showDropHint(false);
+          const file = e.dataTransfer?.files?.[0];
+          if (!file) return;
+          if (!file.name.toLowerCase().endsWith(".nes")) {
+            alert("Please drop a .nes file.");
+            return;
+          }
+          loadFile(file);
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden && nes && !paused) {
+            paused = true;
+            pauseBtn.textContent = "RESUME";
+            if (audioWorkletNode) {
+              audioWorkletNode.port.postMessage({ type: "clear" });
+            }
+          }
+        });
+
+        //Rebinding modal logic
+        const rebindButton = document.getElementById("rebind-button");
+        const rebindModal = document.getElementById("rebind-modal");
+        const closeModalButton = document.getElementById("close-modal-button");
+        const keyBindingsList = document.getElementById("key-bindings-list");
+        let rebindingAction = null;
+
+        const ACTION_NAMES = {
+          [jsnes.Controller.BUTTON_UP]: "Up",
+          [jsnes.Controller.BUTTON_DOWN]: "Down",
+          [jsnes.Controller.BUTTON_LEFT]: "Left",
+          [jsnes.Controller.BUTTON_RIGHT]: "Right",
+          [jsnes.Controller.BUTTON_A]: "A",
+          [jsnes.Controller.BUTTON_B]: "B",
+          [jsnes.Controller.BUTTON_SELECT]: "Select",
+          [jsnes.Controller.BUTTON_START]: "Start",
+        };
+
+        function getKeyForAction(player, button) {
+          for (const key in KEY_MAP) {
+            const mapping = KEY_MAP[key];
+            if (mapping.player === player && mapping.button === button) {
+              return key;
+            }
+          }
+          return "N/A";
+        }
+
+        function populateModal() {
+          keyBindingsList.innerHTML = "";
+          Object.entries(ACTION_NAMES).forEach(([buttonId, actionName]) => {
+            const currentKey = getKeyForAction(1, parseInt(buttonId));
+            const row = document.createElement("div");
+            row.className = "key-row";
+            row.innerHTML = `<span class="action-name">${actionName}</span><button class="btn gray key-button" data-action="${buttonId}">${currentKey}</button>`;
+            keyBindingsList.appendChild(row);
+          });
+          keyBindingsList.querySelectorAll(".key-button").forEach((button) => {
+            button.addEventListener("click", () => {
+              keyBindingsList.querySelectorAll(".key-button").forEach((btn) => {
+                if (btn !== button && btn.textContent === "Press any key...") {
+                  const originalAction = btn.getAttribute("data-action");
+                  btn.textContent = getKeyForAction(
+                    1,
+                    parseInt(originalAction)
+                  );
+                }
+              });
+              const action = button.getAttribute("data-action");
+              button.textContent = "Press any key...";
+              rebindingAction = {
+                player: 1,
+                button: parseInt(action),
+                element: button,
+              };
+            });
+          });
+        }
+
+        rebindButton.addEventListener("click", () => {
+          populateModal();
+          rebindModal.style.display = "flex";
+        });
+        closeModalButton.addEventListener("click", () => {
+          rebindingAction = null;
+          rebindModal.style.display = "none";
+        });
+        rebindModal.addEventListener("click", (e) => {
+          if (e.target === rebindModal) {
+            rebindingAction = null;
+            rebindModal.style.display = "none";
+          }
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (rebindingAction) {
+            e.preventDefault();
+            const newKeyCode = e.code;
+            if (KEY_MAP[newKeyCode]) {
+              alert(`Key ${newKeyCode} is already in use.`);
+              rebindingAction.element.textContent = getKeyForAction(
+                rebindingAction.player,
+                rebindingAction.button
+              );
+              rebindingAction = null;
+              return;
+            }
+            const oldKey = getKeyForAction(
+              rebindingAction.player,
+              rebindingAction.button
+            );
+            if (oldKey) delete KEY_MAP[oldKey];
+            KEY_MAP[newKeyCode] = {
+              player: rebindingAction.player,
+              button: rebindingAction.button,
+            };
+            rebindingAction.element.textContent = newKeyCode;
+            rebindingAction = null;
+          } else {
+            onKeyDown(e);
+          }
+        });
+
+        //The initial black  frame
+        sourceCtx.fillStyle = "#000";
+        sourceCtx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        render();
+      })();
+    </script>
+  </body>
+</html>
+
+<!-- Joshua Z -->
